@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Age Prediction from Webcam</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+
+
+<style>
+    body {
+        background-color: #232323;
+        color: #e0e0e0;
+        font-family: Arial, sans-serif;
+        text-align: center;
+    }
+
+    h3, h4 {
+        color: #ffffff;
+    }
+
+    button {
+        background-color: #1f75bc;
+        color: #e0e0e0;
+        border: 1px solid #181818;
+        padding: 8px 12px;
+        margin: 5px;
+        cursor: pointer;
+    }
+
+    button:hover {
+        background-color: #333;
+    }
+
+    #status, #predictionResult {
+        margin-top: 15px;
+        padding: 10px;
+        background-color: #0a4e4b;
+        border-radius: 5px;
+    }
+
+    #canvas, #webcam {
+        border: 2px solid #444;
+        margin-top: 10px;
+    }
+</style>
+
+
+</head>
+<body>
+    <h3>Age Face Scanner</h3>
+    <div id="status">Loading smart AI...</div> <h4> *Make sure to put your face near the camera*</h2>
+    <video id="webcam" autoplay playsinline width="224" height="224"></video> <br>
+    <canvas id="canvas" width="224" height="224" style="display:none;"></canvas>
+    
+    <button onclick="startWebcam()">Start Webcam</button>
+    <button onclick="capture_and_predict()">Capture & Predict Age</button>
+    <button onclick="stop_cam()">Stop Webcam</button>
+
+    <div id="predictionResult"></div>
+
+    <h5 style="position: fixed; bottom: 0; width: 100%; text-align: center; 
+           font-size: 12px; opacity: 0.5; color: #ccc; margin: 0;">
+    May be inaccurate. <br> <br> <br>
+    <h5 style="position: fixed; bottom: 0; width: 100%; text-align: center; 
+           font-size: 12px; opacity: 0.5; color: #ccc; margin: 0;">
+    Training data from https://www.kaggle.com/datasets/frabbisw/facial-age
+    </h5><br>
+    <script>
+        let model = null;
+        let webcamStream = null;
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Labels
+        const labels = [
+            '3', '6', '8', '12', '13', '15', '18', '17', '19', 
+            '20', '30', '40', '50-60', '75-100'
+        ];
+
+        async function load() {
+            try {
+                document.getElementById('status').innerHTML = 'Loading model...'; //! LOADDDDDDD
+                model = await tf.loadLayersModel('model/model.json');
+                document.getElementById('status').innerHTML = 'Cool smart AI loaded succesfully!';
+                
+            } catch (error) {
+                document.getElementById('status').innerHTML = 'Error loading model: ' + error.message;
+                console.error('Error loading model:', error);
+            }
+        }
+
+        //! WEBCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM
+        async function startWebcam() {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: 224, 
+                        height: 224 
+                    } 
+                });
+                video.srcObject = webcamStream;
+                document.getElementById('status').innerHTML = 'Webcam started';
+            } catch (error) {
+                alert('Error accessing webcam: ' + error.message);
+            }
+        }
+
+        // Stop
+        function stop_cam() {
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                document.getElementById('status').innerHTML = 'Webcam stopped';
+            }
+        }
+
+        // Capture img
+        async function capture_and_predict() {
+            if (!model) {
+                alert('Smart AI not loaded yet !');
+                return;
+            }
+            
+            if (!webcamStream) {
+                alert('Please start the webcam first !');
+                return;
+            }
+
+            try {
+                ctx.drawImage(video, 0, 0, 224, 224);
+                // Convert canvas to tensor
+                let tensor = tf.browser.fromPixels(canvas)
+                    .expandDims(0)
+                    .toFloat();
+                tensor = tensor.div(255.0);
+
+                // Make predictions
+                const prediction = model.predict(tensor);
+                const chances = await prediction.data();
+                
+                // Murder tensors
+                tensor.dispose();
+                prediction.dispose();
+                
+                // Display result
+                displayResults(chances);
+                
+            } catch (error) {
+                document.getElementById('predictionResult').innerHTML = 'Error in making predictions: ' + error.message;
+                console.error(error);
+            }
+        }
+        
+        // Show risults
+        function displayResults(chances) {
+            let resultHtml = '<h4>Prediction Results:</h4>';
+
+            let index3 = labels.indexOf('3');
+            if (index3 !== -1) {
+                chances[index3] = chances[index3] * 0.8; // MINUS 20%
+            }
+            // max prob
+            let maxProb = Math.max(...chances);
+            let maxIndex = chances.indexOf(maxProb);
+            let predictedAge = labels[maxIndex];
+            
+            resultHtml += '<strong>Predicted Age: ' + predictedAge + '</strong><br><br>';
+            
+            // Top 5
+            resultHtml += 'Top chances:<br>';
+            
+            // sort array
+            let indices = Array.from(Array(chances.length).keys());
+            indices.sort((a, b) => chances[b] - chances[a]);
+            
+            // Show top 5
+            for (let i = 0; i < Math.min(5, indices.length); i++) {
+                let idx = indices[i];
+                let percentage = (chances[idx] * 100).toFixed(2);
+                resultHtml += labels[idx] + ': ' + percentage + '%<br>';
+            }
+            
+            document.getElementById('predictionResult').innerHTML = resultHtml;
+        }
+
+        // Load when it loads
+        load();
+    </script>
+</body>
+</html>
